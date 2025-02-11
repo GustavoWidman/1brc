@@ -60,7 +60,7 @@ The output should look like this:
 > - **Calculations only:** ~2.35s
 > - **Full challenge:** ~2.36s
 
-Benchmarks were run on my MacBook Pro 14" M3 Pro with 36GB Unified Memory and 14 CPU cores (10 performance, 4 efficiency).
+Benchmarks were run on my MacBook Pro 14" M3 Max with 36GB Unified Memory and 14 CPU cores (10 performance, 4 efficiency).
 
 ---
 
