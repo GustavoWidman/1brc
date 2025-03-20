@@ -7,7 +7,7 @@ mod hashmap;
 mod measurement;
 
 pub fn perform_calculations_only() -> anyhow::Result<()> {
-    file::File::open("measurements.txt")
+    file::File::open("1b_measurements.txt")
         .context("Failed to open measurements.txt")?
         .parse();
 
@@ -15,7 +15,8 @@ pub fn perform_calculations_only() -> anyhow::Result<()> {
 }
 
 pub fn perform_full_challenge() -> anyhow::Result<()> {
-    let file = file::File::open("measurements.txt").context("Failed to open measurements.txt")?;
+    let file =
+        file::File::open("1b_measurements.txt").context("Failed to open measurements.txt")?;
     let measurements = file.parse();
 
     // print the final measurements

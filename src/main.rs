@@ -16,7 +16,8 @@ fn main() -> anyhow::Result<()> {
 
     let start = std::time::Instant::now();
 
-    let file = file::File::open("measurements.txt").context("Failed to open measurements.txt")?;
+    let file =
+        file::File::open("1b_measurements.txt").context("Failed to open measurements.txt")?;
 
     let measurements = file.parse();
 
