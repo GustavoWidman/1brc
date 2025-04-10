@@ -8,8 +8,8 @@ inherits = "release"
 debug = true
 
 [dependencies]
+ahash = { version = "0.8.11" }
 anyhow = "1.0.97"
-fast-float2 = "0.2.3"
 hashbrown = { version = "0.15.2", features = ["rayon"] }
 memchr = "2.7.4"
 memmap2 = "0.9.5"

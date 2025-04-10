@@ -1,4 +1,3 @@
-#![feature(portable_simd, slice_as_chunks)]
 use anyhow::Context;
 use std::io::Write;
 
@@ -6,37 +5,43 @@ mod file;
 mod hashmap;
 mod measurement;
 
+pub static NUM_WORKERS: usize = 14;
+pub static STATIONS_IN_DATASET: usize = 413;
+pub static IN_FILE_PATH: &str = "./1brc-cache/1b_measurements.txt";
+pub static OUT_FILE_PATH: &str = "./output.out";
+
+#[inline(always)]
 pub fn perform_calculations_only() -> anyhow::Result<()> {
-    file::File::open("1b_measurements.txt")
-        .context("Failed to open measurements.txt")?
+    file::File::open(IN_FILE_PATH)
+        .context(format!("Failed to open {IN_FILE_PATH}"))?
         .parse();
 
     Ok(())
 }
 
+#[inline(always)]
 pub fn perform_full_challenge() -> anyhow::Result<()> {
-    let file =
-        file::File::open("1b_measurements.txt").context("Failed to open measurements.txt")?;
+    let file = file::File::open(IN_FILE_PATH).context(format!("Failed to open {IN_FILE_PATH}"))?;
     let measurements = file.parse();
 
     // print the final measurements
-    let mut output =
-        std::fs::File::create("output.json").context("Failed to create output.json")?;
+    let mut output = std::fs::File::create(OUT_FILE_PATH)
+        .context(format!("Failed to create {OUT_FILE_PATH}"))?;
 
-    write!(output, "{{").context("Failed to write to output.json")?;
+    write!(output, "{{").context(format!("Failed to write to {OUT_FILE_PATH}"))?;
     for (i, (city, measurement)) in measurements.iter().enumerate() {
         write!(
             output,
-            "\"{}\": \"{:.1}/{:.1}/{:.1}\"",
+            "{}={:.1}/{:.1}/{:.1}",
             city, measurement.min, measurement.avg, measurement.max
         )
-        .context("Failed to write to output.json")?;
+        .context(format!("Failed to write to {OUT_FILE_PATH}"))?;
 
         if i != measurements.len() - 1 {
-            write!(output, ",").context("Failed to write to output.json")?;
-        };
+            write!(output, ", ").context(format!("Failed to write to {OUT_FILE_PATH}"))?;
+        }
     }
-    write!(output, "}}").context("Failed to write to output.json")?;
+    write!(output, "}}\n").context(format!("Failed to write to {OUT_FILE_PATH}"))?;
 
     Ok(())
 }

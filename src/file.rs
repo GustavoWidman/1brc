@@ -1,193 +1,80 @@
-use rayon::prelude::{IntoParallelIterator, ParallelIterator, ParallelSliceMut};
-use std::{
-    simd::{prelude::SimdPartialEq, u8x64},
-    sync::Arc,
-};
+use hashbrown::hash_map::RawEntryMut;
+use memmap2::Mmap;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
+    NUM_WORKERS,
     hashmap::HashMap,
     measurement::{FinalMeasurement, Measurement},
 };
 
 pub struct File {
-    mmap: Arc<memmap2::Mmap>,
+    mmap: Arc<Mmap>,
 }
-
-static NUM_WORKERS: usize = 14;
 
 impl<'a> File {
     pub fn open(path: &str) -> anyhow::Result<Self> {
         let file = std::fs::File::options().read(true).open(path)?;
         Ok(Self {
-            mmap: Arc::new(unsafe { memmap2::Mmap::map(&file)? }),
+            mmap: Arc::new(unsafe { memmap2::MmapOptions::new().huge(None).map(&file)? }),
         })
     }
 
-    // fn parse_buffer(buffer: &'a [u8]) -> HashMap<'a> {
-    //     let mut result = HashMap::new();
-    //     buffer.split(|byte: &u8| *byte == b'\n').for_each(|line| {
-    //         let mut parts = line.split(|byte: &u8| *byte == b';');
-    //         if let (Some(city), Some(value)) = (parts.next(), parts.next()) {
-    //             if let Some(value) = fast_float2::parse(value).ok() {
-    //                 result
-    //                     .entry(city)
-    //                     .and_modify(|m| m.add(value))
-    //                     .or_insert(Measurement::new(value));
-    //             }
-    //         }
-    //     });
-
-    //     result
-    // }
-
-    fn parse_buffer(buffer: &[u8]) -> HashMap<'_> {
+    fn parse_buffer(data: &'a [u8]) -> HashMap<'a> {
         let mut result = HashMap::new();
-        let mut pos = 0;
-        let len = buffer.len();
+        let mut buffer = &data[..];
 
-        while pos < len {
-            let remaining = len - pos;
-            let mut newline_pos = None;
-
-            let mut offset = 0;
-            while remaining - offset >= 256 {
-                let base = pos + offset;
-                let b0 = u8x64::from_slice(&buffer[base..base + 64]);
-                let b1 = u8x64::from_slice(&buffer[base + 64..base + 128]);
-                let b2 = u8x64::from_slice(&buffer[base + 128..base + 192]);
-                let b3 = u8x64::from_slice(&buffer[base + 192..base + 256]);
-                let needle = u8x64::splat(b'\n');
-
-                let m0 = b0.simd_eq(needle).to_bitmask();
-                let m1 = b1.simd_eq(needle).to_bitmask();
-                let m2 = b2.simd_eq(needle).to_bitmask();
-                let m3 = b3.simd_eq(needle).to_bitmask();
-
-                if m0 != 0 {
-                    newline_pos = Some(offset + m0.trailing_zeros() as usize);
-                    break;
-                } else if m1 != 0 {
-                    newline_pos = Some(offset + 64 + m1.trailing_zeros() as usize);
-                    break;
-                } else if m2 != 0 {
-                    newline_pos = Some(offset + 128 + m2.trailing_zeros() as usize);
-                    break;
-                } else if m3 != 0 {
-                    newline_pos = Some(offset + 192 + m3.trailing_zeros() as usize);
+        loop {
+            match memchr::memchr(b';', &buffer) {
+                None => {
                     break;
                 }
-                offset += 256;
-            }
+                Some(comma_separator) => {
+                    let end = memchr::memchr(b'\n', &buffer[comma_separator..]).unwrap();
+                    let name = &buffer[..comma_separator];
+                    let value_bytes = &buffer[comma_separator + 1..comma_separator + end];
+                    let value = Self::parse_fake_float(value_bytes);
 
-            if newline_pos.is_none() {
-                let scan_start = pos + offset;
-                let remaining_tail = len - scan_start;
-                let chunk_len = remaining_tail.min(64);
-                if chunk_len == 64 {
-                    let bytes = u8x64::from_slice(&buffer[scan_start..scan_start + 64]);
-                    let needle = u8x64::splat(b'\n');
-                    let mask = bytes.simd_eq(needle);
-                    let bitmask = mask.to_bitmask();
-                    if bitmask != 0 {
-                        newline_pos = Some(offset + bitmask.trailing_zeros() as usize);
-                    }
-                } else {
-                    for i in 0..chunk_len {
-                        if buffer[scan_start + i] == b'\n' {
-                            newline_pos = Some(offset + i);
-                            break;
+                    match result.raw_entry_mut().from_key(name) {
+                        RawEntryMut::Occupied(mut entry) => {
+                            entry.get_mut().add(value);
+                        }
+                        RawEntryMut::Vacant(entry) => {
+                            entry.insert(name, Measurement::new(value));
                         }
                     }
+
+                    buffer = &buffer[comma_separator + end + 1..];
                 }
             }
-
-            let line_end = match newline_pos {
-                Some(rel_pos) => pos + rel_pos,
-                None => len,
-            };
-
-            let mut semi_pos = None;
-            let line = &buffer[pos..line_end];
-            let line_len = line.len();
-            let mut offset = 0;
-            while line_len - offset >= 256 {
-                let base = offset;
-                let b0 = u8x64::from_slice(&line[base..base + 64]);
-                let b1 = u8x64::from_slice(&line[base + 64..base + 128]);
-                let b2 = u8x64::from_slice(&line[base + 128..base + 192]);
-                let b3 = u8x64::from_slice(&line[base + 192..base + 256]);
-                let needle = u8x64::splat(b';');
-
-                let m0 = b0.simd_eq(needle).to_bitmask();
-                let m1 = b1.simd_eq(needle).to_bitmask();
-                let m2 = b2.simd_eq(needle).to_bitmask();
-                let m3 = b3.simd_eq(needle).to_bitmask();
-
-                if m0 != 0 {
-                    semi_pos = Some(offset + m0.trailing_zeros() as usize);
-                    break;
-                } else if m1 != 0 {
-                    semi_pos = Some(offset + 64 + m1.trailing_zeros() as usize);
-                    break;
-                } else if m2 != 0 {
-                    semi_pos = Some(offset + 128 + m2.trailing_zeros() as usize);
-                    break;
-                } else if m3 != 0 {
-                    semi_pos = Some(offset + 192 + m3.trailing_zeros() as usize);
-                    break;
-                }
-                offset += 256;
-            }
-
-            if semi_pos.is_none() {
-                while offset < line_len {
-                    let rem = line_len - offset;
-                    let clen = rem.min(64);
-                    if clen == 64 {
-                        let bytes = u8x64::from_slice(&line[offset..offset + 64]);
-                        let needle = u8x64::splat(b';');
-                        let mask = bytes.simd_eq(needle);
-                        let bitmask = mask.to_bitmask();
-                        if bitmask != 0 {
-                            semi_pos = Some(offset + bitmask.trailing_zeros() as usize);
-                            break;
-                        }
-                    } else {
-                        for j in 0..clen {
-                            if line[offset + j] == b';' {
-                                semi_pos = Some(offset + j);
-                                break;
-                            }
-                        }
-                        if semi_pos.is_some() {
-                            break;
-                        }
-                    }
-                    offset += clen;
-                }
-            }
-
-            if let Some(semi_idx) = semi_pos {
-                let city = &line[..semi_idx];
-                let value_bytes = &line[semi_idx + 1..];
-                if let Some(value) = fast_float2::parse(value_bytes).ok() {
-                    result
-                        .entry(city)
-                        .and_modify(|m| m.add(value))
-                        .or_insert(Measurement::new(value));
-                }
-            }
-
-            pos = match newline_pos {
-                Some(rel_pos) => pos + rel_pos + 1,
-                None => len,
-            };
         }
 
         result
     }
 
-    pub fn parse(&self) -> Vec<(String, FinalMeasurement)> {
+    #[inline(always)]
+    fn parse_fake_float(mut bytes: &[u8]) -> i16 {
+        let negative = unsafe { *bytes.get_unchecked(0) } == b'-';
+
+        if negative {
+            // Only parse digits.
+            bytes = &unsafe { bytes.get_unchecked(1..) };
+        }
+
+        let mut val = 0;
+        for &byte in bytes {
+            if byte == b'.' {
+                continue;
+            }
+            let digit = (byte - b'0') as i16;
+            val = val * 10 + digit;
+        }
+
+        if negative { -val } else { val }
+    }
+
+    pub fn parse(&self) -> BTreeMap<String, FinalMeasurement> {
         let chunks = self.chunk_file();
 
         let measurements = chunks
@@ -201,7 +88,7 @@ impl<'a> File {
                 },
             );
 
-        let mut final_measurements = measurements
+        let final_measurements = measurements
             .into_inner()
             .into_par_iter()
             .map(|(city, measurement)| {
@@ -209,41 +96,41 @@ impl<'a> File {
                 let city = String::from_utf8_lossy(city).to_string();
                 (city, final_measurement)
             })
-            .collect::<Vec<(String, FinalMeasurement)>>();
-
-        final_measurements.par_sort_by(|a, b| a.0.cmp(&b.0));
+            .collect::<BTreeMap<String, FinalMeasurement>>();
 
         final_measurements
     }
 
-    fn chunk_file(&self) -> [&[u8]; NUM_WORKERS] {
-        let file_size = self.mmap.len();
-        let chunk_size = file_size / NUM_WORKERS;
-        let mut chunks = [(0, 0); NUM_WORKERS];
-        let mut start: usize = 0;
+    fn chunk_file(&self) -> Vec<&[u8]> {
+        let buffer = &self.mmap[..];
+        let total_size = buffer.len();
 
-        for i in 0..NUM_WORKERS - 1 {
-            let end = start + (chunk_size as usize);
-            match memchr::memchr(b'\n', &self.mmap[end..]) {
-                Some(pos) => {
-                    chunks[i] = (start, end + pos);
-                    start = end + pos + 1;
-                }
-                None => {
-                    chunks[i] = (start, file_size);
-                    break;
-                }
-            }
+        // Handle small files - no need to chunk
+        if total_size < 1024 * 1024 {
+            // Less than 1MB
+            return vec![buffer];
         }
-        chunks[NUM_WORKERS - 1] = (start, file_size);
 
-        let mut result: [&[u8]; NUM_WORKERS] = [&[]; NUM_WORKERS];
+        let chunk_size = total_size / NUM_WORKERS;
+        let mut chunks = Vec::with_capacity(NUM_WORKERS);
+        let mut start = 0;
+
+        while start < total_size {
+            let mut end = (start + chunk_size).min(total_size);
+
+            // Don't split in the middle of a line - search forward for newline
+            if end < total_size {
+                while end < total_size && buffer[end] != b'\n' {
+                    end += 1;
+                }
+                // Include the newline in the previous chunk
+                end += 1;
+            }
+
+            chunks.push(&buffer[start..end]);
+            start = end;
+        }
 
         chunks
-            .into_iter()
-            .enumerate()
-            .for_each(|(i, (start, end))| result[i] = &self.mmap[start..end]);
-
-        result
     }
 }

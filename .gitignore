@@ -1,4 +1,5 @@
 /target
 *measurements.txt
-output.json
+output.*
 profile.json.gz
+1brc-cache

@@ -53,12 +53,12 @@ The output should look like this:
 
 |  | **Cold Cache** | **Warm Cache** |
 |--|----------------|----------------|
-| ⏱️ **Performance** | 6-10 seconds   | 2.3-2.5 seconds  |
+| ⏱️ **Performance** | 6-10 seconds   | 1.8-2.0 seconds  |
 
 > **Latest Benchmarks:**
 >
-> - **Calculations only:** ~2.35s
-> - **Full challenge:** ~2.36s
+> - **Calculations only:** ~1.814s
+> - **Full challenge:** ~1.820s
 
 Benchmarks were run on my MacBook Pro 14" M3 Max with 36GB Unified Memory and 14 CPU cores (10 performance, 4 efficiency).
 
@@ -68,8 +68,8 @@ Benchmarks were run on my MacBook Pro 14" M3 Max with 36GB Unified Memory and 14
 
 - SIMD acceleration for ultra-fast parsing (responsible for around 10-20% of the performance gain)
 - Multi-threaded processing (responsible for most of the performance gain) using [`rayon`](https://crates.io/crates/rayon)
-- Optimized HashMap for fast lookups using [`hashbrown`](https://crates.io/crates/hashbrown)
-- Optimized float32 parsing using [`fast-float2`](https://crates.io/crates/fast-float2)
+- Optimized HashMap for fast lookups using [`hashbrown`](https://crates.io/crates/hashbrown) and [`ahash`](https://crates.io/crates/ahash)
+- Optimized float32 parsing by pretending it is a i16, multiplied by 10.
 - Efficient memory management
 - Handles **1 billion+** rows efficiently and quickly
 - Benchmark suite with Criterion for accurate performance measurements
