@@ -2,7 +2,7 @@
 
 [![Rust](https://img.shields.io/badge/Rust-🦀-orange?logo=rust)](https://www.rust-lang.org)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
-[![Benchmarks](https://img.shields.io/badge/benchmarks-2.3s-blue)](#)
+[![Benchmarks](https://img.shields.io/badge/benchmarks-1.8s-blue)](#)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ### **1BRC** - One Billion Row Challenge
@@ -31,18 +31,18 @@ Gaborone;37.2
 
 The output should look like this:
 
-```json
+```text
 {
   ...
-  "Kankan": "-22.2/26.5/76.4",
-  "Kano": "-35.8/26.4/83.6",
-  "Kansas City": "-23.0/12.5/45.2",
-  "Karachi": "-26.4/26.0/77.2",
-  "Karonga": "-23.9/24.4/72.7",
-  "Kathmandu": "-42.6/18.3/75.2",
-  "Khartoum": "-14.2/29.9/80.4",
-  "Kingston": "-34.3/27.4/86.2",
-  "Kinshasa": "-17.4/25.3/71.3",
+  Kankan=-22.2/26.5/76.4,
+  Kano=-35.8/26.4/83.6,
+  Kansas City=-23.0/12.5/45.2,
+  Karachi=-26.4/26.0/77.2,
+  Karonga=-23.9/24.4/72.7,
+  Kathmandu=-42.6/18.3/75.2,
+  Khartoum=-14.2/29.9/80.4,
+  Kingston=-34.3/27.4/86.2,
+  Kinshasa=-17.4/25.3/71.3,
   ...
 }
 ```

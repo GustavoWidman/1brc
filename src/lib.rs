@@ -7,7 +7,7 @@ mod measurement;
 
 pub static NUM_WORKERS: usize = 14;
 pub static STATIONS_IN_DATASET: usize = 413;
-pub static IN_FILE_PATH: &str = "./1brc-cache/1b_measurements.txt";
+pub static IN_FILE_PATH: &str = "./measurements.txt";
 pub static OUT_FILE_PATH: &str = "./output.out";
 
 #[inline(always)]
