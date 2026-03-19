@@ -1,5 +1,5 @@
 use anyhow::Context;
-use one_billion_row_challenge::{IN_FILE_PATH, NUM_WORKERS, OUT_FILE_PATH, STATIONS_IN_DATASET};
+use one_billion_row_challenge::{IN_FILE_PATH, NUM_WORKERS, OUT_FILE_PATH};
 use std::io::Write;
 
 mod file;
@@ -11,14 +11,7 @@ fn main() -> anyhow::Result<()> {
         std::fs::remove_file("{OUT_FILE_PATH}").context("Failed to remove {OUT_FILE_PATH}")?;
     }
 
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(NUM_WORKERS)
-        .build_global()
-        .unwrap();
-
-    let num_workers = rayon::current_num_threads();
-    println!("Number of workers: {}", num_workers);
-    assert_eq!(num_workers, NUM_WORKERS);
+    println!("Number of workers: {}", NUM_WORKERS);
 
     let start = std::time::Instant::now();
 

@@ -7,19 +7,32 @@ pub struct Measurement {
 
 impl Measurement {
     #[inline(always)]
-    pub fn new(mut value: i16) -> Self {
-        if value > 999 {
-            value = 999;
+    pub fn empty() -> Self {
+        Self {
+            min: i16::MAX,
+            max: i16::MIN,
+            sum: 0,
+            count: 0,
         }
-        if value < -999 {
-            value = -999;
-        }
+    }
 
+    #[inline(always)]
+    pub fn new(value: i16) -> Self {
         Self {
             min: value,
             max: value,
             sum: value as i64,
             count: 1,
+        }
+    }
+
+    #[inline(always)]
+    pub fn new_from(other: &Measurement) -> Self {
+        Self {
+            min: other.min,
+            max: other.max,
+            sum: other.sum,
+            count: other.count,
         }
     }
 
