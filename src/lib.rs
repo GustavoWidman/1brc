@@ -5,8 +5,7 @@ mod file;
 mod hashmap;
 mod measurement;
 
-pub static NUM_WORKERS: usize = 14;
-pub static STATIONS_IN_DATASET: usize = 413;
+pub static NUM_WORKERS: usize = 16;
 pub static IN_FILE_PATH: &str = "./measurements.txt";
 pub static OUT_FILE_PATH: &str = "./output.out";
 
