@@ -62,6 +62,43 @@ fn hash_key(key: &[u8]) -> u64 {
     }
 }
 
+/// Full-content hash using ARM CRC32C intrinsics.
+/// Same algorithm as x86_64 variant, using __crc32cd/w for equivalent throughput.
+#[inline(always)]
+#[cfg(target_arch = "aarch64")]
+fn hash_key(key: &[u8]) -> u64 {
+    use std::arch::aarch64::{__crc32cd, __crc32cw};
+
+    let len = key.len();
+    let ptr = key.as_ptr();
+
+    unsafe {
+        let crc = if len >= 16 {
+            let mut h = __crc32cd(len as u32, (ptr as *const u64).read_unaligned());
+            let mut i = 8usize;
+            while i + 8 <= len {
+                h = __crc32cd(h, (ptr.add(i) as *const u64).read_unaligned());
+                i += 8;
+            }
+            __crc32cd(h, (ptr.add(len - 8) as *const u64).read_unaligned())
+        } else if len >= 8 {
+            let a = (ptr as *const u64).read_unaligned();
+            let b = (ptr.add(len - 8) as *const u64).read_unaligned();
+            __crc32cd(__crc32cd(len as u32, a), b)
+        } else if len >= 4 {
+            let lo = (ptr as *const u32).read_unaligned();
+            let hi = (ptr.add(len - 4) as *const u32).read_unaligned();
+            __crc32cw(__crc32cw(len as u32, lo), hi)
+        } else {
+            let mut buf = [0u8; 8];
+            std::ptr::copy_nonoverlapping(ptr, buf.as_mut_ptr(), len);
+            __crc32cd(len as u32, u64::from_ne_bytes(buf))
+        };
+
+        (crc as u64) | 1
+    }
+}
+
 impl<'a> HashMap<'a> {
     #[inline(always)]
     pub fn new() -> Self {
@@ -81,6 +118,8 @@ impl<'a> HashMap<'a> {
             let ptr = self.entries.as_ptr().add(idx) as *const u8;
             #[cfg(target_arch = "x86_64")]
             std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+            #[cfg(target_arch = "aarch64")]
+            std::arch::asm!("prfm pldl1keep, [{ptr}]", ptr = in(reg) ptr, options(nostack, preserves_flags));
         }
         hash
     }
