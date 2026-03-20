@@ -68,7 +68,7 @@ impl<'a> File {
     /// Returns offset from ptr, or max_len if not found.
     #[inline(always)]
     #[cfg(target_arch = "x86_64")]
-    unsafe fn find_byte_avx2(ptr: *const u8, max_len: usize, needle: u8) -> usize {
+    unsafe fn find_byte_simd(ptr: *const u8, max_len: usize, needle: u8) -> usize {
         use std::arch::x86_64::*;
 
         unsafe {
@@ -98,6 +98,42 @@ impl<'a> File {
         max_len
     }
 
+    /// Find byte `needle` using NEON — 16 bytes at a time.
+    #[inline(always)]
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn find_byte_simd(ptr: *const u8, max_len: usize, needle: u8) -> usize {
+        use std::arch::aarch64::*;
+
+        unsafe {
+            let needle_vec = vdupq_n_u8(needle);
+            let mut offset: usize = 0;
+
+            // NEON path: 16 bytes at a time
+            while offset + 16 <= max_len {
+                let chunk = vld1q_u8(ptr.add(offset));
+                let cmp = vceqq_u8(chunk, needle_vec);
+                // Narrow to 8-bit saturated, then reinterpret as u64 pair
+                let narrowed = vshrn_n_u16(vreinterpretq_u16_u8(cmp), 4);
+                let bits = vget_lane_u64(vreinterpret_u64_u8(narrowed), 0);
+                if bits != 0 {
+                    return offset + (bits.trailing_zeros() as usize >> 2);
+                }
+                offset += 16;
+            }
+
+            // Scalar fallback
+            while offset < max_len {
+                if *ptr.add(offset) == needle {
+                    return offset;
+                }
+                offset += 1;
+            }
+        }
+
+        max_len
+    }
+
+    #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2,bmi1,bmi2")]
     unsafe fn parse_buffer(data: &'a [u8]) -> HashMap<'a> {
         unsafe {
@@ -107,7 +143,39 @@ impl<'a> File {
             let base = data.as_ptr();
 
             while pos < len {
-                let offset = Self::find_byte_avx2(base.add(pos), len - pos, b';');
+                let offset = Self::find_byte_simd(base.add(pos), len - pos, b';');
+                if offset >= len - pos { break; }
+                let semi = pos + offset;
+
+                let name = std::slice::from_raw_parts(base.add(pos), semi - pos);
+
+                // Prefetch hash table slot while we parse the temperature
+                let hash = result.prefetch_slot(name);
+
+                // Parse temperature (gives time for prefetch to complete)
+                let (val, next_ptr) = Self::parse_temp(base.add(semi + 1));
+
+                pos = next_ptr.offset_from(base) as usize;
+
+                // Insert with pre-computed hash (slot should be warm now)
+                result.insert_with_hash(name, val, hash);
+            }
+
+            result
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "crc,neon")]
+    unsafe fn parse_buffer(data: &'a [u8]) -> HashMap<'a> {
+        unsafe {
+            let mut result = HashMap::new();
+            let mut pos = 0;
+            let len = data.len();
+            let base = data.as_ptr();
+
+            while pos < len {
+                let offset = Self::find_byte_simd(base.add(pos), len - pos, b';');
                 if offset >= len - pos { break; }
                 let semi = pos + offset;
 
